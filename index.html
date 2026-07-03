@@ -97,7 +97,24 @@
     background:rgba(203,200,130,.12); color:var(--accent);
     padding:3px 9px; border-radius:999px; margin-left:8px; vertical-align:middle;
   }
-  .stat-number{ font-size:1.8rem; font-weight:700; color:var(--accent); margin:6px 0; }
+  .stat-number{ font-size:1.8rem; font-weight:700; color:var(--accent); margin:6px 0; font-variant-numeric:tabular-nums; }
+  .live-counter-card{ position:relative; border-color:rgba(203,200,130,.35); box-shadow:0 0 0 1px rgba(203,200,130,.06); }
+  .live-dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#3ddc73; margin-left:6px; vertical-align:middle;
+    box-shadow:0 0 0 0 rgba(61,220,115,.6);
+    animation: livepulse 1.8s infinite;
+  }
+  @keyframes livepulse{
+    0%{ box-shadow:0 0 0 0 rgba(61,220,115,.55); }
+    70%{ box-shadow:0 0 0 8px rgba(61,220,115,0); }
+    100%{ box-shadow:0 0 0 0 rgba(61,220,115,0); }
+  }
+  .stat-number.tick{ animation: tickflash .5s ease; }
+  @keyframes tickflash{
+    0%{ color: var(--text); }
+    100%{ color: var(--accent); }
+  }
   .footer{ border-top:1px solid var(--panel-border); margin-top:80px; padding:40px 24px 24px; }
   .footer-content{ max-width:1200px; margin:0 auto; display:flex; gap:60px; flex-wrap:wrap; justify-content:space-between; }
   .footer-brand .logo{ margin-bottom:8px; }
@@ -198,13 +215,11 @@
     <p>public repos</p>
     <a class="card-link" href="https://github.com/rmrar" target="_blank">rmrar</a>
   </div>
-  <div class="card">
-    <h3><i class="fab fa-tiktok"></i> TikTok</h3>
+  <div class="card live-counter-card">
+    <h3><i class="fab fa-tiktok"></i> TikTok <span class="live-dot"></span></h3>
     <div class="stat-number" id="tiktokStat">—</div>
-    <p>followers</p>
+    <p>followers · <span id="tiktokUpdated">loading…</span></p>
     <a class="card-link" href="https://tiktok.com/rm.rar" target="_blank">rm.rar</a>
-    <span style="margin:0 6px; color:var(--text-dim);">·</span>
-    <a class="card-link" href="https://tokcounter.com/?user=rm.rar" target="_blank">Check live ↗</a>
   </div>
   <div class="card">
     <h3><i class="fab fa-steam"></i> Steam</h3>
@@ -276,12 +291,55 @@
     })
     .catch(() => {});
 
-  fetch('stats.json')
-    .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(data => {
-      if (data.followers) document.getElementById('tiktokStat').textContent = data.followers.toLocaleString();
-    })
-    .catch(() => {});
+  let lastFollowers = null;
+
+  function timeAgo(ms) {
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+  }
+
+  function animateCount(el, from, to, duration) {
+    if (from === null) { el.textContent = to.toLocaleString(); return; }
+    const start = performance.now();
+    function frame(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = Math.round(from + (to - from) * eased);
+      el.textContent = val.toLocaleString();
+      if (t < 1) requestAnimationFrame(frame);
+      else {
+        el.classList.add('tick');
+        setTimeout(() => el.classList.remove('tick'), 500);
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function pollStats() {
+    fetch('stats.json?_=' + Date.now())
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const el = document.getElementById('tiktokStat');
+        if (typeof data.followers === 'number') {
+          animateCount(el, lastFollowers, data.followers, 900);
+          lastFollowers = data.followers;
+        }
+        const updatedEl = document.getElementById('tiktokUpdated');
+        if (data.updatedAt) updatedEl.textContent = 'updated ' + timeAgo(data.updatedAt);
+        else updatedEl.textContent = '';
+      })
+      .catch(() => {
+        document.getElementById('tiktokUpdated').textContent = 'offline';
+      });
+  }
+
+  pollStats();
+  setInterval(pollStats, 60 * 1000);
 </script>
 
 </body>
